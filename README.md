@@ -47,3 +47,12 @@ probes = find_probes()
 - `find_probes()` works from USB/sysfs alone.
 - Fallback to programmer probe listing is optional via `find_probes(list_command=[...])`.
 - Registry path is configurable via `configure_registry(path)`.
+
+## CLI
+Create or update a local registry template and auto-add currently connected probes:
+
+```bash
+stlink-toolkit init-registry --path probes.json
+```
+
+If `--path` is omitted, it defaults to `probes.json` in the current directory.
