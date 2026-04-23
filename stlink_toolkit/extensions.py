@@ -175,10 +175,7 @@ def enable_extensions(
 def disable_extensions_for_flash(
     ext_ids: Iterable[str] = DEFAULT_ST_EXTENSION_IDS,
 ) -> List[Tuple[str, str]]:
-    """Disable ST debug extensions before a flash operation (with step logging).
-
-    After writing the DB, the disabled list is read back and verified.
-    """
+    """Disable ST debug extensions before a flash operation (with step logging)."""
     print("[flash][step] Disabling ST debug extensions")
     results = disable_extensions(ext_ids)
     disabled = [ext for ext, status in results if status == "disabled"]
@@ -190,25 +187,13 @@ def disable_extensions_for_flash(
         print(f"[flash][step] Already disabled: {', '.join(e.split('.')[-1] for e in already)}")
     if skipped:
         print(f"[flash][step] Not installed (skipped): {', '.join(e.split('.')[-1] for e in skipped)}")
-
-    # Verify by reading the DB back.
-    expected = {e.lower() for e in ext_ids if _is_installed(e)}
-    actual = {e["id"].lower() for e in _read_disabled(_state_db_path())}
-    missing = expected - actual
-    if missing:
-        print(f"[flash][step] WARNING: {len(missing)} extension(s) NOT in disabled list after write: {', '.join(sorted(missing))}")
-    else:
-        print(f"[flash][step] Verified: {len(expected)}/{len(expected)} target extensions disabled in state.vscdb")
     return results
 
 
 def enable_extensions_after_flash(
     ext_ids: Iterable[str] = DEFAULT_ST_EXTENSION_IDS,
 ) -> List[Tuple[str, str]]:
-    """Re-enable ST debug extensions after a flash operation (with step logging).
-
-    After writing the DB, the disabled list is read back and verified.
-    """
+    """Re-enable ST debug extensions after a flash operation (with step logging)."""
     print("[flash][step] Re-enabling ST debug extensions")
     results = enable_extensions(ext_ids)
     enabled = [ext for ext, status in results if status == "enabled"]
@@ -217,15 +202,6 @@ def enable_extensions_after_flash(
         print(f"[flash][step] Re-enabled {len(enabled)} extension(s): {', '.join(e.split('.')[-1] for e in enabled)}")
     if already:
         print(f"[flash][step] Already enabled: {', '.join(e.split('.')[-1] for e in already)}")
-
-    # Verify by reading the DB back.
-    target_lower = {e.lower() for e in ext_ids}
-    actual = {e["id"].lower() for e in _read_disabled(_state_db_path())}
-    leftover = target_lower & actual
-    if leftover:
-        print(f"[flash][step] WARNING: {len(leftover)} extension(s) STILL disabled after re-enable: {', '.join(sorted(leftover))}")
-    else:
-        print("[flash][step] Verified: no target extensions remain in disabled list")
     return results
 
 

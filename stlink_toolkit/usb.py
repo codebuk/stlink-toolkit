@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .extensions import disable_extensions_for_flash, enable_extensions_after_flash
 from .registry import _load_registry, _save_probe_usb_ids, lookup_probe
 
 STLINK_VID = 0x0483
@@ -329,6 +330,14 @@ def _sysfs_port_rebind(bus: int, devaddr: int) -> bool:
 
 
 def usb_reset_stlink(serial: Optional[str] = None) -> bool:
+    disable_extensions_for_flash()
+    try:
+        return _usb_reset_stlink_impl(serial)
+    finally:
+        enable_extensions_after_flash()
+
+
+def _usb_reset_stlink_impl(serial: Optional[str] = None) -> bool:
     try:
         preferred_pid: Optional[int] = None
         if serial:
@@ -373,6 +382,14 @@ def usb_reset_stlink(serial: Optional[str] = None) -> bool:
 
 
 def reset_detected_stlink_usb_devices() -> None:
+    disable_extensions_for_flash()
+    try:
+        _reset_detected_stlink_usb_devices_impl()
+    finally:
+        enable_extensions_after_flash()
+
+
+def _reset_detected_stlink_usb_devices_impl() -> None:
     devices = _find_all_stlink_usb_devices()
     for entry in devices:
         dev = entry["dev"]
