@@ -3,10 +3,11 @@ import json
 import shutil
 import subprocess
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .usb import find_probes
+from .usb import find_probe_vcps, find_probes
 
 
 _DUMMY_C_SOURCE = """int main(void) {\n    return 0;\n}\n"""
@@ -98,6 +99,46 @@ def create_dummy_elf(out_dir: Path, name: str) -> int:
     return 0
 
 
+def list_vcps(json_output: bool = False) -> int:
+    rows = find_probe_vcps()
+    if json_output:
+        print(json.dumps(rows, indent=2))
+        return 0
+
+    print(f"count={len(rows)}")
+    for row in rows:
+        by_id = ",".join(row.get("by_id", [])) or "-"
+        print(
+            f"probe={row['probe_serial']} nick={row['probe_nick']} "
+            f"type={row['probe_type']} tty={row['device']} vidpid={row['usb_vid']}:{row['usb_pid']} "
+            f"busaddr={row['usb_bus']}:{row['usb_address']} by-id={by_id}"
+        )
+    return 0
+
+
+def list_probes(tree: bool = False, with_vcps: bool = False) -> int:
+    probes = find_probes()
+
+    vcps_by_serial: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    if with_vcps or tree:
+        for row in find_probe_vcps():
+            vcps_by_serial[row["probe_serial"]].append(row)
+        for rows in vcps_by_serial.values():
+            rows.sort(key=lambda x: x["device"])
+
+    for probe in probes:
+        print(f"probe={probe.serial} nick={probe.last_3} type={probe.description}")
+        if tree:
+            for row in vcps_by_serial.get(probe.serial, []):
+                by_id = ",".join(row.get("by_id", [])) or "-"
+                print(f"  |- tty={row['device']} by-id={by_id}")
+        elif with_vcps:
+            for row in vcps_by_serial.get(probe.serial, []):
+                by_id = ",".join(row.get("by_id", [])) or "-"
+                print(f"  tty={row['device']} by-id={by_id}")
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stlink-toolkit", description="ST-Link toolkit helpers")
     sub = parser.add_subparsers(dest="command")
@@ -126,6 +167,31 @@ def _build_parser() -> argparse.ArgumentParser:
         default="dummy_zero",
         help="Base filename for source/ELF (default: dummy_zero)",
     )
+
+    vcps_cmd = sub.add_parser(
+        "list-vcps",
+        help="List VCP serial ports and map them to ST-Link probe identifiers",
+    )
+    vcps_cmd.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
+
+    probes_cmd = sub.add_parser(
+        "list-probes",
+        help="List detected probes; optionally include mapped VCP tty entries",
+    )
+    probes_cmd.add_argument(
+        "--with-vcps",
+        action="store_true",
+        help="Include VCP tty rows under each probe",
+    )
+    probes_cmd.add_argument(
+        "--tree",
+        action="store_true",
+        help="Render probe and VCP mapping in tree format",
+    )
     return parser
 
 
@@ -137,6 +203,10 @@ def main(argv: List[str] = None) -> int:
         return init_registry(Path(args.path))
     if args.command == "create-dummy-elf":
         return create_dummy_elf(Path(args.out_dir), args.name)
+    if args.command == "list-vcps":
+        return list_vcps(json_output=bool(args.json))
+    if args.command == "list-probes":
+        return list_probes(tree=bool(args.tree), with_vcps=bool(args.with_vcps))
 
     parser.print_help()
     return 1

@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .registry import _load_registry, _save_probe_usb_ids, lookup_probe
 
@@ -19,6 +19,124 @@ STLINK_PIDS = (
     0x3753,
     0x3754,
 )
+
+STLINK_PID_TYPES = {
+    0x3744: "ST-LINK/V2",
+    0x3748: "ST-LINK/V2",
+    0x374A: "ST-LINK/V2-1",
+    0x374B: "ST-LINK/V2-1",
+    0x374E: "ST-LINK/V3E",
+    0x3753: "ST-LINK/V3",
+    0x3754: "ST-LINK/V3",
+}
+
+
+def _default_probe_model(vid: int, pid: int) -> str:
+    kind = STLINK_PID_TYPES.get(pid)
+    if kind:
+        return f"{kind} ({vid:04x}:{pid:04x})"
+    return f"USB {vid:04x}:{pid:04x}"
+
+
+def _read_text_file(path: Path) -> Optional[str]:
+    try:
+        return path.read_text().strip()
+    except Exception:
+        return None
+
+
+def _find_usb_sysfs_node(bus: int, address: int, serial: Optional[str]) -> Optional[Path]:
+    for entry in Path("/sys/bus/usb/devices").glob("*"):
+        busnum = _read_text_file(entry / "busnum")
+        devnum = _read_text_file(entry / "devnum")
+        if busnum is None or devnum is None:
+            continue
+        try:
+            if int(busnum) != bus or int(devnum) != address:
+                continue
+        except ValueError:
+            continue
+
+        if serial:
+            sysfs_serial = _read_text_file(entry / "serial")
+            if sysfs_serial and sysfs_serial != serial:
+                continue
+        return entry
+    return None
+
+
+def _serial_by_id_map() -> Dict[str, List[str]]:
+    out: Dict[str, List[str]] = {}
+    by_id = Path("/dev/serial/by-id")
+    if not by_id.exists():
+        return out
+
+    for link in by_id.glob("*"):
+        try:
+            resolved = link.resolve(strict=True)
+        except Exception:
+            continue
+        tty_name = resolved.name
+        out.setdefault(tty_name, []).append(link.name)
+
+    for vals in out.values():
+        vals.sort()
+    return out
+
+
+def find_probe_vcps() -> List[Dict[str, Any]]:
+    """List VCP tty devices and map them to detected ST-Link probes."""
+    entries: List[Dict[str, Any]] = []
+    by_id_map = _serial_by_id_map()
+
+    for dev in _find_all_stlink_usb_devices():
+        serial = dev.get("serial")
+        if not serial:
+            continue
+
+        vid = int(dev["vid"])
+        pid = int(dev["pid"])
+        bus = int(dev["bus"])
+        address = int(dev["address"])
+        probe_type = _default_probe_model(vid, pid)
+
+        usb_node = _find_usb_sysfs_node(bus, address, serial)
+        if usb_node is None:
+            continue
+
+        for tty_node in usb_node.glob("**/tty*"):
+            tty_name = tty_node.name
+            if not re.match(r"^tty(ACM|USB)\d+$", tty_name):
+                continue
+
+            dev_path = Path("/dev") / tty_name
+            if not dev_path.exists():
+                continue
+
+            iface_dir = tty_node.parent.parent
+            iface_num = _read_text_file(iface_dir / "bInterfaceNumber")
+            iface_name = _read_text_file(iface_dir / "interface")
+            product = _read_text_file(usb_node / "product")
+            manufacturer = _read_text_file(usb_node / "manufacturer")
+
+            entries.append({
+                "probe_serial": serial,
+                "probe_nick": serial[-3:] if len(serial) >= 3 else serial,
+                "probe_type": probe_type,
+                "usb_vid": f"{vid:04x}",
+                "usb_pid": f"{pid:04x}",
+                "usb_bus": bus,
+                "usb_address": address,
+                "device": os.fspath(dev_path),
+                "by_id": [f"/dev/serial/by-id/{n}" for n in by_id_map.get(tty_name, [])],
+                "interface_number": iface_num,
+                "interface_name": iface_name,
+                "usb_product": product,
+                "usb_manufacturer": manufacturer,
+            })
+
+    entries.sort(key=lambda x: (x["probe_serial"], x["device"]))
+    return entries
 
 
 def _require_usb_core():
@@ -140,7 +258,12 @@ def find_probes(reset_usb: bool = False, list_command: Optional[List[str]] = Non
             if not serial:
                 continue
             reg_entry = reg_probes.get(serial, {})
-            description = reg_entry.get("model") or f"USB {entry['vid']:04x}:{entry['pid']:04x}"
+            default_model = _default_probe_model(int(entry["vid"]), int(entry["pid"]))
+            model = reg_entry.get("model")
+            if isinstance(model, str) and model and not model.startswith("USB "):
+                description = model
+            else:
+                description = default_model
             probes.append(STLinkProbe(serial, description))
             try:
                 _save_probe_usb_ids(serial, int(entry["vid"]), int(entry["pid"]))

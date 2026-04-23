@@ -64,3 +64,23 @@ stlink-toolkit create-dummy-elf --out-dir test-assets/dummy-elf --name dummy_zer
 ```
 
 Defaults are `--out-dir test-assets/dummy-elf` and `--name dummy_zero`.
+
+List VCP serial ports and map them to detected ST-Link probe identifiers:
+
+```bash
+stlink-toolkit list-vcps
+stlink-toolkit list-vcps --json
+```
+
+List probes only (compact):
+
+```bash
+stlink-toolkit list-probes
+```
+
+Add optional VCP lines or tree view under each probe:
+
+```bash
+stlink-toolkit list-probes --with-vcps
+stlink-toolkit list-probes --tree
+```
