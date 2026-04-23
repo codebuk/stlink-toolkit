@@ -21,6 +21,18 @@ STLINK_PIDS = (
 )
 
 
+def _require_usb_core():
+    try:
+        import usb.core  # type: ignore
+        return usb.core
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing required support package: pyusb. "
+            "Install with Fedora dnf: sudo dnf install -y python3-pyusb "
+            "or with pip: python3 -m pip install pyusb"
+        ) from exc
+
+
 class STLinkProbe:
     def __init__(self, serial: str, description: str = ""):
         self.serial = serial
@@ -32,7 +44,7 @@ class STLinkProbe:
 
 
 def _find_stlink_by_serial(serial: Optional[str], preferred_pid: Optional[int] = None):
-    import usb.core
+    usb_core = _require_usb_core()
 
     pids_to_try: List[int] = []
     if preferred_pid is not None:
@@ -42,13 +54,13 @@ def _find_stlink_by_serial(serial: Optional[str], preferred_pid: Optional[int] =
             pids_to_try.append(pid)
 
     for pid in pids_to_try:
-        for dev in usb.core.find(find_all=True, idVendor=STLINK_VID, idProduct=pid) or []:
+        for dev in usb_core.find(find_all=True, idVendor=STLINK_VID, idProduct=pid) or []:
             if serial is None:
                 return dev
             try:
                 if (dev.serial_number or "") == serial:
                     return dev
-            except (ValueError, usb.core.USBError):
+            except (ValueError, usb_core.USBError):
                 continue
     return None
 
@@ -58,10 +70,10 @@ def _find_all_stlink_usb_devices() -> List[dict]:
     seen: set = set()
 
     try:
-        import usb.core
+        usb_core = _require_usb_core()
 
         for pid in STLINK_PIDS:
-            for dev in usb.core.find(find_all=True, idVendor=STLINK_VID, idProduct=pid) or []:
+            for dev in usb_core.find(find_all=True, idVendor=STLINK_VID, idProduct=pid) or []:
                 key = (int(dev.bus), int(dev.address))
                 if key in seen:
                     continue
@@ -69,7 +81,7 @@ def _find_all_stlink_usb_devices() -> List[dict]:
                 serial: Optional[str] = None
                 try:
                     serial = dev.serial_number or None
-                except (ValueError, usb.core.USBError):
+                except (ValueError, usb_core.USBError):
                     serial = None
                 devices.append({
                     "dev": dev,
@@ -81,6 +93,8 @@ def _find_all_stlink_usb_devices() -> List[dict]:
                 })
         if devices:
             return devices
+    except RuntimeError:
+        raise
     except Exception:
         pass
 

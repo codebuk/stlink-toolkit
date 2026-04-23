@@ -2,6 +2,28 @@
 
 Reusable Python helpers for ST-Link workflows.
 
+## Install Dependencies
+
+Preferred on Fedora (system Python packages via dnf):
+
+```bash
+sudo dnf install -y python3 python3-psutil python3-pyusb
+```
+
+Or run the helper script:
+
+```bash
+bash scripts/install-deps-fedora.sh
+```
+
+Fallback (any distro, pip):
+
+```bash
+python3 -m pip install --upgrade psutil pyusb
+```
+
+The toolkit fails fast when required support packages are missing.
+
 ## What it provides
 - Probe registry helpers (`registry.py`)
 - USB probe enumeration and reset (`usb.py`)

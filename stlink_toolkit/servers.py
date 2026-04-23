@@ -12,11 +12,20 @@ STLINK_GDB_PATTERNS = [
 ]
 
 
-def _detect_running_gdb_servers() -> List[Dict[str, object]]:
+def _require_psutil():
     try:
-        import psutil
-    except ImportError:
-        return []
+        import psutil  # type: ignore
+        return psutil
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing required support package: psutil. "
+            "Install with Fedora dnf: sudo dnf install -y python3-psutil "
+            "or with pip: python3 -m pip install psutil"
+        ) from exc
+
+
+def _detect_running_gdb_servers() -> List[Dict[str, object]]:
+    psutil = _require_psutil()
 
     servers: List[Dict[str, object]] = []
     for proc in psutil.process_iter(["pid", "cmdline", "name"]):
@@ -66,10 +75,7 @@ def find_running_shared_server_for_serial(serial: str) -> Optional[Dict[str, obj
 
 
 def kill_stale_servers(port: str = "", serial: str = "", silent: bool = False) -> List[Tuple[int, str]]:
-    try:
-        import psutil
-    except ImportError:
-        return []
+    psutil = _require_psutil()
 
     patterns = list(STLINK_GDB_PATTERNS)
     if port:
