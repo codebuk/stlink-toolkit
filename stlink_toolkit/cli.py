@@ -7,6 +7,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .extensions import (
+    DEFAULT_ST_EXTENSION_IDS,
+    disable_extensions,
+    enable_extensions,
+)
 from .usb import find_probe_vcps, find_probes
 
 
@@ -105,18 +110,20 @@ def list_vcps(json_output: bool = False) -> int:
         print(json.dumps(rows, indent=2))
         return 0
 
+    rows.sort(key=lambda x: (x["device"], x["probe_serial"]))
     print(f"count={len(rows)}")
     for row in rows:
         by_id = ",".join(row.get("by_id", [])) or "-"
         print(
-            f"probe={row['probe_serial']} nick={row['probe_nick']} "
-            f"type={row['probe_type']} tty={row['device']} vidpid={row['usb_vid']}:{row['usb_pid']} "
+            f"tty={row['device']} "
+            f"probe={row['probe_serial']} nick={row['probe_nick']} type={row['probe_type']} "
+            f"vidpid={row['usb_vid']}:{row['usb_pid']} "
             f"busaddr={row['usb_bus']}:{row['usb_address']} by-id={by_id}"
         )
     return 0
 
 
-def list_probes(tree: bool = False, with_vcps: bool = False) -> int:
+def list_probes(tree: bool = False, with_vcps: bool = False, tree_device: bool = False) -> int:
     probes = find_probes()
 
     vcps_by_serial: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -126,13 +133,42 @@ def list_probes(tree: bool = False, with_vcps: bool = False) -> int:
         for rows in vcps_by_serial.values():
             rows.sort(key=lambda x: x["device"])
 
-    for probe in probes:
-        print(f"probe={probe.serial} nick={probe.last_3} type={probe.description}")
-        if tree:
-            for row in vcps_by_serial.get(probe.serial, []):
+    if tree and tree_device:
+        rows: List[Dict[str, Any]] = []
+        for serial_rows in vcps_by_serial.values():
+            rows.extend(serial_rows)
+        rows.sort(key=lambda x: (x["device"], x["probe_serial"]))
+
+        seen_serials = set()
+        for row in rows:
+            by_id = ",".join(row.get("by_id", [])) or "-"
+            print(f"tty={row['device']} by-id={by_id}")
+            print(
+                f"  |- probe={row['probe_serial']} nick={row['probe_nick']} "
+                f"type={row['probe_type']}"
+            )
+            seen_serials.add(row["probe_serial"])
+
+        for probe in probes:
+            if probe.serial not in seen_serials:
+                print(f"probe={probe.serial} nick={probe.last_3} type={probe.description} (no tty)")
+        return 0
+
+    if tree:
+        for probe in probes:
+            print(f"probe={probe.serial} nick={probe.last_3} type={probe.description}")
+            rows = vcps_by_serial.get(probe.serial, [])
+            if not rows:
+                print("  |- tty=- by-id=-")
+                continue
+            for row in rows:
                 by_id = ",".join(row.get("by_id", [])) or "-"
                 print(f"  |- tty={row['device']} by-id={by_id}")
-        elif with_vcps:
+        return 0
+
+    for probe in probes:
+        print(f"probe={probe.serial} nick={probe.last_3} type={probe.description}")
+        if with_vcps:
             for row in vcps_by_serial.get(probe.serial, []):
                 by_id = ",".join(row.get("by_id", [])) or "-"
                 print(f"  tty={row['device']} by-id={by_id}")
@@ -190,8 +226,29 @@ def _build_parser() -> argparse.ArgumentParser:
     probes_cmd.add_argument(
         "--tree",
         action="store_true",
-        help="Render probe and VCP mapping in tree format",
+        help="Render programmer-first tree format (probe root, tty children)",
     )
+    probes_cmd.add_argument(
+        "--tree-device",
+        action="store_true",
+        help="Use device-first tree format (tty root, probe child) with --tree",
+    )
+
+    for name, help_text in (
+        ("ext-disable", "Disable ST debugging VS Code extensions (sets disabled flag in VS Code state DB)"),
+        ("ext-enable", "Re-enable ST debugging VS Code extensions (clears disabled flag in VS Code state DB)"),
+    ):
+        ext_cmd = sub.add_parser(name, help=help_text)
+        ext_cmd.add_argument(
+            "--ext",
+            action="append",
+            default=[],
+            metavar="PUBLISHER.NAME",
+            help=(
+                "Extension id (repeatable). Defaults to: "
+                + ", ".join(DEFAULT_ST_EXTENSION_IDS)
+            ),
+        )
     return parser
 
 
@@ -206,7 +263,20 @@ def main(argv: List[str] = None) -> int:
     if args.command == "list-vcps":
         return list_vcps(json_output=bool(args.json))
     if args.command == "list-probes":
-        return list_probes(tree=bool(args.tree), with_vcps=bool(args.with_vcps))
+        return list_probes(
+            tree=bool(args.tree),
+            with_vcps=bool(args.with_vcps),
+            tree_device=bool(args.tree_device),
+        )
+    if args.command in ("ext-disable", "ext-enable"):
+        ext_ids = tuple(args.ext) if args.ext else DEFAULT_ST_EXTENSION_IDS
+        fn = disable_extensions if args.command == "ext-disable" else enable_extensions
+        try:
+            fn(ext_ids)
+        except RuntimeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        return 0
 
     parser.print_help()
     return 1

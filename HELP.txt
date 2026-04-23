@@ -1,0 +1,41 @@
+stlink-toolkit help quick reference
+==================================
+
+Show built-in CLI help:
+  stlink-toolkit --help
+
+Core commands
+-------------
+
+Initialize/update local probe registry:
+  stlink-toolkit init-registry --path probes.json
+
+Create deterministic dummy ELF fixture:
+  stlink-toolkit create-dummy-elf --out-dir test-assets/dummy-elf --name dummy_zero
+
+List probes (compact):
+  stlink-toolkit list-probes
+
+List probes with mapped serial ports:
+  stlink-toolkit list-probes --with-vcps
+
+Tree view of probes -> serial ports:
+  stlink-toolkit list-probes --tree
+
+List VCP mappings directly:
+  stlink-toolkit list-vcps
+  stlink-toolkit list-vcps --json
+
+Probe nicknames
+---------------
+
+Probe nickname = last 3 characters of 24-char ST-Link serial.
+
+Example: extract only nick 739 from tree output:
+  stlink-toolkit list-probes --tree | grep -A 2 "nick=739"
+
+Dependencies
+------------
+
+Fedora:
+  sudo dnf install -y python3 python3-psutil python3-pyusb
