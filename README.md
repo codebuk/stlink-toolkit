@@ -56,3 +56,11 @@ stlink-toolkit init-registry --path probes.json
 ```
 
 If `--path` is omitted, it defaults to `probes.json` in the current directory.
+
+Create a deterministic dummy C source and corresponding ELF fixture:
+
+```bash
+stlink-toolkit create-dummy-elf --out-dir test-assets/dummy-elf --name dummy_zero
+```
+
+Defaults are `--out-dir test-assets/dummy-elf` and `--name dummy_zero`.

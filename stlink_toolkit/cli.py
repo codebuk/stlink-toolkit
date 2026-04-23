@@ -1,10 +1,15 @@
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 from .usb import find_probes
+
+
+_DUMMY_C_SOURCE = """int main(void) {\n    return 0;\n}\n"""
 
 
 def _load_existing(path: Path) -> Dict[str, Any]:
@@ -69,6 +74,30 @@ def init_registry(path: Path) -> int:
     return 0
 
 
+def create_dummy_elf(out_dir: Path, name: str) -> int:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    src_path = out_dir / f"{name}.c"
+    elf_path = out_dir / f"{name}.elf"
+
+    src_path.write_text(_DUMMY_C_SOURCE)
+
+    compiler = shutil.which("gcc") or shutil.which("clang")
+    if compiler is None:
+        print("Error: no C compiler found (gcc/clang).", file=sys.stderr)
+        return 2
+
+    cmd = [compiler, "-Os", "-s", "-o", str(elf_path), str(src_path)]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"Error: failed to build dummy ELF with {compiler}: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Wrote source: {src_path}")
+    print(f"Wrote ELF: {elf_path}")
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stlink-toolkit", description="ST-Link toolkit helpers")
     sub = parser.add_subparsers(dest="command")
@@ -82,6 +111,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default="probes.json",
         help="Registry file path (default: probes.json)",
     )
+
+    dummy_cmd = sub.add_parser(
+        "create-dummy-elf",
+        help="Create deterministic dummy C source and build an ELF fixture",
+    )
+    dummy_cmd.add_argument(
+        "--out-dir",
+        default="test-assets/dummy-elf",
+        help="Output directory for generated source/ELF (default: test-assets/dummy-elf)",
+    )
+    dummy_cmd.add_argument(
+        "--name",
+        default="dummy_zero",
+        help="Base filename for source/ELF (default: dummy_zero)",
+    )
     return parser
 
 
@@ -91,6 +135,8 @@ def main(argv: List[str] = None) -> int:
 
     if args.command == "init-registry":
         return init_registry(Path(args.path))
+    if args.command == "create-dummy-elf":
+        return create_dummy_elf(Path(args.out_dir), args.name)
 
     parser.print_help()
     return 1
