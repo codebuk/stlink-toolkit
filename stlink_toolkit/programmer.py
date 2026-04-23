@@ -633,6 +633,7 @@ def program_with_recovery(
     **kwargs,
 ) -> Tuple[bool, float]:
     no_mode_check = kwargs.pop("no_mode_check", False)
+    allow_fallback_freq = kwargs.pop("allow_fallback_freq", False)
     connect_under_reset = kwargs.get("connect_under_reset", False)
     t0 = time.monotonic()
     if allow_server_kill:
@@ -650,7 +651,7 @@ def program_with_recovery(
             full_kwargs["force_full"] = True
             full_kwargs["freq"] = MAX_SWD_FREQ
             success, elapsed = program_device(elf_path, probe, allow_server_kill=allow_server_kill, **full_kwargs)
-        if not success:
+        if not success and allow_fallback_freq:
             log.error(
                 "Full flash at %d KHz failed; falling back to %d KHz — "
                 "this should never happen on a healthy ST-Link/target. "
@@ -661,6 +662,12 @@ def program_with_recovery(
             full_kwargs["force_full"] = True
             full_kwargs["freq"] = FALLBACK_SWD_FREQ
             success, elapsed = program_device(elf_path, probe, allow_server_kill=allow_server_kill, **full_kwargs)
+        elif not success:
+            log.notice(
+                "Skipping %d KHz fallback (pass --allow-fallback-freq to enable). "
+                "In practice the slow fallback rarely succeeds when full-speed has failed.",
+                FALLBACK_SWD_FREQ,
+            )
     if not success:
         log.error("All programming attempts failed; attempting USB reset of ST-Link...")
         if usb_reset_stlink(probe.serial):
@@ -671,7 +678,7 @@ def program_with_recovery(
             post_reset_kwargs["freq"] = MAX_SWD_FREQ
             post_reset_kwargs["connect_under_reset"] = connect_under_reset
             success, elapsed = program_device(elf_path, probe, allow_server_kill=allow_server_kill, **post_reset_kwargs)
-            if not success:
+            if not success and allow_fallback_freq:
                 log.error(
                     "Retry after USB reset still failed at %d KHz; falling back to %d KHz — "
                     "hardware issue suspected.", MAX_SWD_FREQ, FALLBACK_SWD_FREQ,

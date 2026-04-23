@@ -12,6 +12,7 @@ import time
 from typing import List, Optional
 
 from . import log
+from .extensions import disable_extensions_for_flash, enable_extensions_after_flash
 from .gdb_server import gdb_server_start
 from .programmer import (
     FALLBACK_SWD_FREQ,
@@ -52,6 +53,8 @@ Common options:
     --no-id-check           Skip pre-flash device-ID probe (faster)
     --verbose / --no-passthrough / --timestamps  Output controls
     --freq KHz              Override SWD frequency (default 24000)
+    --allow-fallback-freq   Allow slow (8000 KHz) recovery retry on flash failure
+                            (off by default — the slow retry rarely succeeds)
     --help                  Show this message
 
 OTP commands (require --sn SERIAL or --auto-probe ELF):
@@ -102,6 +105,16 @@ def _resolve_probe_sn(specified_sn: Optional[str], auto_probe: bool, elf_path: s
 
 
 def main(default_elf: str = "Debug/l8-427.elf") -> None:
+    """Toolkit entry point. Owns the VS Code ST-debug-extension disable/enable
+    wrap so the rest of the codebase never has to think about it."""
+    disable_extensions_for_flash()
+    try:
+        _main(default_elf=default_elf)
+    finally:
+        enable_extensions_after_flash()
+
+
+def _main(default_elf: str = "Debug/l8-427.elf") -> None:
     script_start = time.monotonic()
     atexit.register(_print_runtime, script_start)
 
@@ -125,6 +138,7 @@ def main(default_elf: str = "Debug/l8-427.elf") -> None:
     auto_update_mode_map = False
     connect_under_reset_for_flash = False
     cleanup_servers_only = False
+    allow_fallback_freq = False
 
     # OTP operations (project-specific dispatch via scripts/awto_otp.py)
     otp_op: Optional[str] = None  # 'read' | 'provision' | 'reprovision' | 'lock'
@@ -199,6 +213,8 @@ def main(default_elf: str = "Debug/l8-427.elf") -> None:
                 print(f"Error: --freq value must be an integer KHz, got: {args[i+1]}", file=sys.stderr)
                 sys.exit(2)
             i += 1
+        elif arg == "--allow-fallback-freq":
+            allow_fallback_freq = True
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}", file=sys.stderr)
             print(HELP_TEXT)
@@ -342,6 +358,7 @@ def main(default_elf: str = "Debug/l8-427.elf") -> None:
         freq=freq_override,
         connect_under_reset=connect_under_reset_for_flash,
         no_mode_check=no_mode_check,
+        allow_fallback_freq=allow_fallback_freq,
     )
 
     # Fast path: known SN + skip-id-check
