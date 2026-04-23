@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stlink-toolkit"
+version = "0.1.0"
+description = "Reusable ST-Link probe helpers"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "codebuk" }]
+dependencies = [
+  "psutil>=5.9",
+  "pyusb>=1.2",
+]
+
+[tool.setuptools]
+packages = ["stlink_toolkit"]

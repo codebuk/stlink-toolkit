@@ -1,0 +1,27 @@
+# stlink-toolkit
+
+Reusable Python helpers for ST-Link workflows.
+
+## What it provides
+- Probe registry helpers (`registry.py`)
+- USB probe enumeration and reset (`usb.py`)
+- Stale GDB server cleanup (`servers.py`)
+- Optional ELF size logging (`sizes.py`)
+
+## Generic by default
+This package does not infer device mode from binary/ELF naming.
+If your app needs build modes (`PDM`, `CON`, etc.), pass mode explicitly in app-level logic.
+
+## Quick start
+```python
+from stlink_toolkit import configure_registry, find_probes, run_server_cleanup_step
+
+configure_registry("./probes.json")
+run_server_cleanup_step("startup")
+probes = find_probes()
+```
+
+## Notes
+- `find_probes()` works from USB/sysfs alone.
+- Fallback to programmer probe listing is optional via `find_probes(list_command=[...])`.
+- Registry path is configurable via `configure_registry(path)`.
