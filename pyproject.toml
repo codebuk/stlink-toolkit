@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stlink-toolkit"
-version = "0.1.0"
-description = "Reusable ST-Link probe helpers"
+version = "0.2.0"
+description = "Reusable ST-Link probe + STM32CubeProgrammer helpers (programming, erase, GDB server, recovery)"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "codebuk" }]
@@ -13,6 +13,9 @@ dependencies = [
   "psutil>=5.9",
   "pyusb>=1.2",
 ]
+
+[project.scripts]
+stlink-toolkit = "stlink_toolkit.cli:main"
 
 [tool.setuptools]
 packages = ["stlink_toolkit"]
