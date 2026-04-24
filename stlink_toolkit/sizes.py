@@ -40,7 +40,51 @@ _LINE_RE = re.compile(
 
 def _sizes_log(elf: str, mode: str) -> Path:
     base = _log_dir if _log_dir is not None else Path(elf).parent
-    return base / f"sizes-{mode}.data"
+    wire = _elf_wire_suffix(elf)
+    log = base / f"sizes-{mode}-{wire}.data"
+
+    # Migrate legacy htc-only histories the first time the new naming scheme is used.
+    if wire == "htc":
+        legacy = base / f"sizes-{mode}.data"
+        if not log.exists() and legacy.exists():
+            legacy.rename(log)
+
+    return log
+
+
+def _elf_wire_suffix(elf: str) -> str:
+    stem = Path(elf).stem.lower()
+    m = re.match(r"awto-(?:con|pdm)-([a-z0-9_-]+)$", stem)
+    if m:
+        return m.group(1)
+    m = re.search(r"-(htc|scs|dingo)$", stem)
+    if m:
+        return m.group(1)
+    return "unknown"
+
+
+def _git_cmd(cwd: Path, *args: str) -> Optional[str]:
+    try:
+        out = subprocess.check_output(["git", *args], cwd=cwd, stderr=subprocess.DEVNULL, text=True, timeout=5)
+    except Exception:
+        return None
+    return out.strip()
+
+
+def _git_metadata(elf: str) -> Tuple[str, str]:
+    start_dir = (_log_dir if _log_dir is not None else Path(elf).parent).resolve()
+    repo_root = _git_cmd(start_dir, "rev-parse", "--show-toplevel")
+    if not repo_root:
+        return "UNKNOWN", "unknown"
+
+    repo = Path(repo_root)
+    commit_hash = _git_cmd(repo, "rev-parse", "--short=12", "HEAD") or "UNKNOWN"
+    status = _git_cmd(repo, "status", "--porcelain")
+    if status is None:
+        dirty = "unknown"
+    else:
+        dirty = "true" if status else "false"
+    return commit_hash, dirty
 
 
 def _elf_region_usage(elf: str) -> Optional[Dict[str, Tuple[int, int]]]:
@@ -101,6 +145,7 @@ def log_build_size(elf: str, mode: str = "GEN") -> None:
     prev_pct = _last_pcts(log, mode)
     prev_bytes = _last_bytes(log, mode)
     ts = time.strftime("%Y-%m-%d %H:%M")
+    git_hash, dirty = _git_metadata(elf)
 
     plain_parts = []
     color_parts = []
@@ -129,8 +174,9 @@ def log_build_size(elf: str, mode: str = "GEN") -> None:
     no_change = prev_bytes is not None and all(regions[n][0] == prev_bytes[n] for n in ("RAM", "CCM", "FLASH", "EXT"))
     suffix = " *" if no_change else ""
     prefix = f"{ts}  {mode:<3}   "
-    plain_line = prefix + "   ".join(plain_parts) + suffix
-    color_line = prefix + "   ".join(color_parts) + suffix
+    metadata = f"   GIT_HASH {git_hash}   DIRTY {dirty}"
+    plain_line = prefix + "   ".join(plain_parts) + metadata + suffix
+    color_line = prefix + "   ".join(color_parts) + metadata + suffix
 
     with log.open("a") as f:
         f.write(plain_line + "\n")
